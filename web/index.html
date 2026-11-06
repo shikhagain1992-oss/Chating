@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NexChat Pro — Real-Time Web & Android Messaging</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 1. AUTHENTICATION SCREEN -->
+  <div id="authScreen" class="auth-wrapper">
+    <div class="auth-card">
+      <h1>NexChat Pro</h1>
+      <p class="sub">Unified Real-Time Messaging & WebRTC Calling (Web + Android)</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button id="tabSignIn" class="btn btn-primary" style="margin:0;flex:1;">Sign In</button>
+        <button id="tabSignUp" class="btn btn-outline" style="margin:0;flex:1;">Sign Up</button>
+      </div>
+
+      <div id="signUpExtraFields" class="hidden">
+        <div class="field-group">
+          <label>Full Name *</label>
+          <input type="text" id="authFullName" placeholder="Alice Vance" />
+        </div>
+        <div class="field-group">
+          <label>Mobile Number *</label>
+          <input type="tel" id="authMobile" placeholder="+15550192834" />
+        </div>
+        <div class="field-group">
+          <label>Unique @username (3–24 chars)</label>
+          <input type="text" id="authUsername" placeholder="alice_nexchat" />
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label>Email ID *</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" />
+      </div>
+      <div class="field-group">
+        <label>Password (min 6 digits/chars) *</label>
+        <input type="password" id="authPassword" placeholder="At least 6 digits or characters" />
+      </div>
+
+      <div id="authError" class="error-banner hidden" style="margin-bottom:10px;"></div>
+
+      <button id="btnEmailLogin" class="btn btn-primary">Sign In with Email</button>
+      <button id="btnEmailRegister" class="btn btn-primary hidden">Create Account (Sign Up)</button>
+      <button id="btnToggleAuthMode" class="btn btn-outline" style="font-weight:700;">Don't have an account? Sign Up</button>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;" />
+      <button id="btnGoogleLogin" class="btn btn-outline">Continue with Google (Optional)</button>
+      <button id="btnGithubLogin" class="btn btn-outline">Continue with GitHub (Optional)</button>
+      <button id="btnResetPassword" class="btn btn-outline">Reset Password (Min 6 Digits)</button>
+    </div>
+  </div>
+
+  <!-- 2. ATOMIC PROFILE & USERNAME ONBOARDING SCREEN -->
+  <div id="onboardingScreen" class="auth-wrapper hidden">
+    <div class="auth-card">
+      <h1>Complete Your Profile</h1>
+      <p class="sub">Claim your atomic @username and required contact phone number.</p>
+
+      <div class="field-group">
+        <label>Unique @username (lowercase, 3–24 chars)</label>
+        <input type="text" id="onboardUsername" placeholder="alice_nexchat" />
+      </div>
+      <div class="field-group">
+        <label>Display Name</label>
+        <input type="text" id="onboardDisplayName" placeholder="Alice Vance" />
+      </div>
+      <div class="field-group">
+        <label>Phone Number (Required Profile Field — Unverified)</label>
+        <input type="tel" id="onboardPhone" placeholder="+15550192834" />
+      </div>
+      <div class="field-group">
+        <label>About / Status Bio</label>
+        <input type="text" id="onboardAbout" value="Hey there! I am using NexChat Pro." />
+      </div>
+
+      <button id="btnSaveOnboarding" class="btn btn-primary">Claim @username & Enter NexChat</button>
+      <button id="btnOnboardLogout" class="btn btn-outline">Sign Out</button>
+      <div id="onboardError" class="error-banner hidden"></div>
+    </div>
+  </div>
+
+  <!-- 3. MAIN WORKSPACE SHELL -->
+  <div id="appShell" class="app-shell hidden">
+    <!-- Left Sidebar -->
+    <div class="left-panel">
+      <div class="panel-header">
+        <div>
+          <strong>NexChat Pro</strong>
+          <div id="currentUserBadge" style="font-size:0.76rem;opacity:0.85;">@user</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="btnToggleTheme" class="btn btn-outline" style="width:auto;padding:4px 10px;color:#fff;border-color:rgba(255,255,255,0.4);margin:0;">Theme</button>
+          <button id="btnLogout" class="btn btn-danger" style="width:auto;padding:4px 10px;">Logout</button>
+        </div>
+      </div>
+
+      <div class="nav-tabs">
+        <div class="nav-tab active" data-tab="chats">Chats</div>
+        <div class="nav-tab" data-tab="groups">Groups</div>
+        <div class="nav-tab" data-tab="status">Status</div>
+        <div class="nav-tab" data-tab="calls">Calls</div>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="userSearchInput" placeholder="Search @username to start chat..." />
+        <button id="btnFindUser" class="btn btn-primary" style="width:auto;padding:6px 12px;">+ Chat</button>
+        <button id="btnNewGroup" class="btn btn-outline" style="width:auto;padding:6px 10px;margin:0;">+ Group</button>
+      </div>
+
+      <div id="leftBannerError" class="error-banner hidden" style="margin:8px 12px;"></div>
+      <div id="conversationList" class="conv-list"></div>
+    </div>
+
+    <!-- Right Chat Panel -->
+    <div class="right-panel">
+      <div id="chatHeader" class="chat-header hidden">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button id="btnMobileBack" class="btn btn-outline" style="width:auto;padding:4px 10px;margin:0;">←</button>
+          <div>
+            <div id="activeChatTitle" style="font-weight:700;">Select a conversation</div>
+            <div id="activeChatSubtitle" style="font-size:0.78rem;color:var(--text-secondary);"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="btnAudioCall" class="btn btn-primary" style="width:auto;padding:6px 12px;">📞 Audio</button>
+          <button id="btnVideoCall" class="btn btn-primary" style="width:auto;padding:6px 12px;">🎥 Video</button>
+          <button id="btnLoadOlder" class="btn btn-outline" style="width:auto;padding:6px 10px;margin:0;">Older</button>
+        </div>
+      </div>
+
+      <div id="messagesContainer" class="messages-container">
+        <div style="margin:auto;color:var(--text-secondary);text-align:center;">
+          Select a conversation or search for a user by @username to message in real time across Web and Android.
+        </div>
+      </div>
+
+      <div id="replyBanner" class="hidden" style="padding:6px 14px;background:var(--surface-variant);display:flex;justify-content:space-between;align-items:center;">
+        <span id="replyBannerText" style="font-size:0.82rem;"></span>
+        <button id="btnCancelReply" class="btn btn-outline" style="width:auto;padding:2px 8px;margin:0;">✕</button>
+      </div>
+
+      <div id="composerBar" class="composer-bar hidden">
+        <input type="file" id="fileAttachmentInput" class="hidden" />
+        <button id="btnAttachFile" class="btn btn-outline" style="width:auto;padding:8px 12px;margin:0;">📎</button>
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button id="btnRecordVoice" class="btn btn-outline" style="width:auto;padding:8px 12px;margin:0;" title="Hold or click to record voice message">🎤</button>
+        <button id="btnSendMessage" class="btn btn-primary" style="width:auto;padding:8px 18px;">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. WEBRTC AUDIO / VIDEO CALL OVERLAY -->
+  <div id="callOverlay" class="call-overlay hidden">
+    <div style="text-align:center;">
+      <div id="callTypeBadge" style="color:var(--primary);font-weight:700;font-size:0.85rem;">WebRTC Call</div>
+      <h2 id="callPeerName" style="margin-top:8px;">Peer</h2>
+      <p id="callStatusLabel" style="color:var(--text-secondary);margin-top:4px;">Ringing...</p>
+    </div>
+
+    <div class="video-grid">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
+    <div style="display:flex;gap:12px;">
+      <button id="btnAcceptCall" class="btn btn-primary hidden" style="width:auto;padding:12px 24px;">Accept Call</button>
+      <button id="btnRejectCall" class="btn btn-danger hidden" style="width:auto;padding:12px 24px;">Reject</button>
+      <button id="btnToggleMic" class="btn btn-outline" style="width:auto;padding:12px 18px;margin:0;">Mute Mic</button>
+      <button id="btnToggleCam" class="btn btn-outline" style="width:auto;padding:12px 18px;margin:0;">Toggle Cam</button>
+      <button id="btnHangupCall" class="btn btn-danger" style="width:auto;padding:12px 24px;">End Call</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

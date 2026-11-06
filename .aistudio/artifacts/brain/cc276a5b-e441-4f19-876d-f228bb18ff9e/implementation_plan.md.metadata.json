@@ -1,0 +1,6 @@
+{
+  "summary": "Revised architectural and implementation plan for NexChat Pro incorporating all 8 mandatory corrections: primary Email/Password + optional Google/GitHub auth with atomic Firestore transaction username claims and unverified phone contact field; zero Base64/chunked Firestore media fallback (strictly Cloudinary restricted unsigned/signed preset or Firebase Storage with explicit upload-unavailable errors); authoritative monotonic message state machine with idempotent deterministic IDs and cursor pagination; unified Android/Web WebRTC signaling schema with separate caller/receiver ICE candidate subcollections and pre-remoteDescription queueing; complete Firestore and Storage security rules; canonical cross-platform schema contract; and strict verification matrix.",
+  "updatedAt": "2026-11-06T04:38:49.066599107Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

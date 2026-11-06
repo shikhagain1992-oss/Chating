@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // User profile avatars
+    match /users/{userId}/profile/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      request.resource.size < 10 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+
+    // Conversation media attachments (images, videos, voice notes, files)
+    match /conversations/{conversationId}/{senderId}/{fileName} {
+      allow read: if isSignedIn() &&
+                     request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.memberUids;
+      allow write: if isSignedIn() &&
+                      request.auth.uid == senderId &&
+                      request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.memberUids &&
+                      request.resource.size < 25 * 1024 * 1024;
+    }
+
+    // 24-hour Status media
+    match /statuses/{authorId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() &&
+                      request.auth.uid == authorId &&
+                      request.resource.size < 20 * 1024 * 1024 &&
+                      (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
+    }
+  }
+}

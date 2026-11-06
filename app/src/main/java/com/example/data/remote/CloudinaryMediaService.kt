@@ -1,0 +1,268 @@
+package com.example.data.remote
+
+import com.example.BuildConfig
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
+
+class MediaStorageNotConfiguredException(
+    message: String = "Upload Unavailable — Storage Not Configured: Set CLOUDINARY_SIGNING_ENDPOINT (or CLOUDINARY_UPLOAD_PRESET) for cloud f06cifgw in Secrets."
+) : IllegalStateException(message)
+
+data class UploadedMediaResult(
+    val secureUrl: String,
+    val publicId: String,
+    val format: String,
+    val resourceType: String,
+    val bytes: Long,
+    val durationSec: Int = 0
+)
+
+private data class SignedUploadParams(
+    val signature: String,
+    val timestamp: Long,
+    val apiKey: String,
+    val folder: String,
+    val cloudName: String
+)
+
+/**
+ * Handles media uploads (images, videos, audio/voice-notes, and raw files) via Cloudinary
+ * (Cloud Name: `f06cifgw`) using the secure backend signing service (`CLOUDINARY_SIGNING_ENDPOINT`)
+ * or a restricted unsigned upload preset.
+ *
+ * SECURITY INVARIANTS:
+ * 1. Never references or embeds CLOUDINARY_API_SECRET in client code.
+ * 2. Never falls back to Base64 or chunked Firestore documents.
+ * 3. Fails fast with MediaStorageNotConfiguredException when unconfigured.
+ */
+class CloudinaryMediaService(
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build(),
+    private val cloudNameOverride: String? = null,
+    private val uploadPresetOverride: String? = null,
+    private val signingEndpointOverride: String? = null
+) {
+    companion object {
+        const val DEFAULT_CLOUD_NAME = "f06cifgw"
+    }
+
+    val cloudName: String
+        get() {
+            val raw = (cloudNameOverride ?: BuildConfig.CLOUDINARY_CLOUD_NAME).trim()
+            return if (raw.isBlank() || raw.startsWith("MY_") || raw.startsWith("YOUR_")) {
+                if (cloudNameOverride != null) raw else DEFAULT_CLOUD_NAME
+            } else {
+                raw
+            }
+        }
+
+    val uploadPreset: String
+        get() = (uploadPresetOverride ?: BuildConfig.CLOUDINARY_UPLOAD_PRESET).trim()
+
+    val signingEndpoint: String
+        get() = (signingEndpointOverride ?: BuildConfig.CLOUDINARY_SIGNING_ENDPOINT).trim()
+
+    private fun String.isConfiguredSecret(): Boolean =
+        isNotBlank() && !startsWith("MY_") && !startsWith("YOUR_") && this != "UNCONFIGURED"
+
+    fun isConfigured(): Boolean {
+        return cloudName.isConfiguredSecret() &&
+            (signingEndpoint.isConfiguredSecret() || uploadPreset.isConfiguredSecret())
+    }
+
+    /**
+     * Requests a short-lived upload signature from the trusted backend signing service
+     * so that CLOUDINARY_API_SECRET remains exclusively on the backend.
+     */
+    private suspend fun fetchSignedUploadParams(
+        folder: String,
+        resourceType: String
+    ): Result<SignedUploadParams> = withContext(Dispatchers.IO) {
+        try {
+            val idToken = try {
+                Firebase.auth.currentUser?.getIdToken(false)?.await()?.token.orEmpty()
+            } catch (_: Exception) {
+                ""
+            }
+
+            val timestamp = System.currentTimeMillis() / 1000L
+            val requestJson = JSONObject().apply {
+                put("folder", folder)
+                put("timestamp", timestamp)
+                put("resource_type", resourceType)
+                put("cloud_name", cloudName)
+            }
+
+            val reqBuilder = Request.Builder()
+                .url(signingEndpoint)
+                .post(
+                    requestJson.toString()
+                        .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+                )
+
+            if (idToken.isNotBlank()) {
+                reqBuilder.header("Authorization", "Bearer $idToken")
+            }
+
+            httpClient.newCall(reqBuilder.build()).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Backend signing service returned HTTP ${response.code}: $bodyStr")
+                    )
+                }
+                val json = JSONObject(bodyStr)
+                val signature = json.optString("signature")
+                val apiKey = json.optString("apiKey").ifBlank { json.optString("api_key") }
+                val signedTimestamp = json.optLong("timestamp", timestamp)
+                val signedFolder = json.optString("folder", folder)
+                val resolvedCloud = json.optString("cloudName").ifBlank {
+                    json.optString("cloud_name").ifBlank { cloudName }
+                }
+
+                if (signature.isBlank() || apiKey.isBlank()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Backend signing response missing signature or api_key")
+                    )
+                }
+
+                Result.success(
+                    SignedUploadParams(
+                        signature = signature,
+                        timestamp = signedTimestamp,
+                        apiKey = apiKey,
+                        folder = signedFolder,
+                        cloudName = resolvedCloud
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("Failed to contact Cloudinary signing service: ${e.localizedMessage}", e))
+        }
+    }
+
+    suspend fun uploadBytes(
+        bytes: ByteArray,
+        fileName: String,
+        mimeType: String,
+        folder: String = "nexchat_pro",
+        durationSecHint: Int = 0
+    ): Result<UploadedMediaResult> = withContext(Dispatchers.IO) {
+        if (!isConfigured()) {
+            return@withContext Result.failure(MediaStorageNotConfiguredException())
+        }
+
+        try {
+            // Cloudinary uses resource_type "video" for both video and audio/voice-note files,
+            // "image" for images, and "raw" for documents/other files.
+            val resourceType = when {
+                mimeType.startsWith("image/") -> "image"
+                mimeType.startsWith("video/") || mimeType.startsWith("audio/") -> "video"
+                else -> "raw"
+            }
+
+            val mediaType = mimeType.toMediaTypeOrNull() ?: "application/octet-stream".toMediaTypeOrNull()
+            val fileBody = bytes.toRequestBody(mediaType)
+
+            val multipartBuilder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", fileName, fileBody)
+
+            val targetCloudName: String
+
+            if (signingEndpoint.isConfiguredSecret()) {
+                val signedRes = fetchSignedUploadParams(folder = folder, resourceType = resourceType)
+                val signed = signedRes.getOrElse { err ->
+                    return@withContext Result.failure(err)
+                }
+                targetCloudName = signed.cloudName
+                multipartBuilder
+                    .addFormDataPart("api_key", signed.apiKey)
+                    .addFormDataPart("timestamp", signed.timestamp.toString())
+                    .addFormDataPart("signature", signed.signature)
+                    .addFormDataPart("folder", signed.folder)
+            } else if (uploadPreset.isConfiguredSecret()) {
+                targetCloudName = cloudName
+                multipartBuilder
+                    .addFormDataPart("folder", folder)
+                    .addFormDataPart("upload_preset", uploadPreset)
+            } else {
+                return@withContext Result.failure(MediaStorageNotConfiguredException())
+            }
+
+            val url = "https://api.cloudinary.com/v1_1/$targetCloudName/$resourceType/upload"
+            val request = Request.Builder()
+                .url(url)
+                .post(multipartBuilder.build())
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val bodyStr = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val errMsg = try {
+                        JSONObject(bodyStr).optJSONObject("error")?.optString("message")
+                            ?: "HTTP ${response.code}"
+                    } catch (_: Exception) {
+                        "HTTP ${response.code}"
+                    }
+                    return@withContext Result.failure(IllegalStateException("Cloudinary upload failed: $errMsg"))
+                }
+
+                val json = JSONObject(bodyStr)
+                val secureUrl = json.optString("secure_url")
+                if (secureUrl.isBlank() || !secureUrl.startsWith("https://")) {
+                    return@withContext Result.failure(IllegalStateException("Cloudinary response missing https secure_url"))
+                }
+
+                val duration = json.optDouble("duration", durationSecHint.toDouble()).toInt()
+                Result.success(
+                    UploadedMediaResult(
+                        secureUrl = secureUrl,
+                        publicId = json.optString("public_id"),
+                        format = json.optString("format"),
+                        resourceType = json.optString("resource_type", resourceType),
+                        bytes = json.optLong("bytes", bytes.size.toLong()),
+                        durationSec = duration.coerceAtLeast(durationSecHint)
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun uploadFile(
+        file: File,
+        mimeType: String,
+        folder: String = "nexchat_pro",
+        durationSecHint: Int = 0
+    ): Result<UploadedMediaResult> = withContext(Dispatchers.IO) {
+        if (!isConfigured()) {
+            return@withContext Result.failure(MediaStorageNotConfiguredException())
+        }
+        if (!file.exists() || file.length() <= 0L) {
+            return@withContext Result.failure(IllegalArgumentException("Media file is empty or missing"))
+        }
+        uploadBytes(
+            bytes = file.readBytes(),
+            fileName = file.name,
+            mimeType = mimeType,
+            folder = folder,
+            durationSecHint = durationSecHint
+        )
+    }
+}

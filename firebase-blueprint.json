@@ -1,0 +1,231 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public searchable user profile and online presence record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "username": { "type": "string", "description": "Unique lowercase username." },
+        "usernameLower": { "type": "string", "description": "Lowercase indexed username for search." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "displayNameLower": { "type": "string", "description": "Lowercase display name for prefix search." },
+        "photoUrl": { "type": "string", "description": "HTTPS profile photo URL." },
+        "about": { "type": "string", "description": "User status bio." },
+        "online": { "type": "boolean", "description": "Whether the user is currently online." },
+        "lastSeen": { "type": "string", "format": "date-time", "description": "Server timestamp of last activity." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last profile update." }
+      },
+      "required": ["uid", "username", "usernameLower", "displayName", "displayNameLower", "online", "createdAt", "updatedAt"]
+    },
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Owner-only private user contact information and notification tokens.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID." },
+        "email": { "type": "string", "description": "User email address." },
+        "phoneNumber": { "type": "string", "description": "Required contact phone number." },
+        "phoneVerified": { "type": "boolean", "description": "True only if verified via phone OTP." },
+        "fcmTokens": { "type": "array", "description": "Registered FCM device tokens." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp." }
+      },
+      "required": ["uid", "phoneNumber", "phoneVerified", "createdAt", "updatedAt"]
+    },
+    "UsernameClaim": {
+      "title": "UsernameClaim",
+      "description": "Atomic uniqueness claim mapping a lowercase username to a UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID." },
+        "username": { "type": "string", "description": "Claimed lowercase username." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp." }
+      },
+      "required": ["uid", "username", "createdAt"]
+    },
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Device sign-in session record for session isolation and login alerts.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "description": "Unique session identifier." },
+        "uid": { "type": "string", "description": "Owner UID." },
+        "deviceName": { "type": "string", "description": "Human-readable device/browser model." },
+        "platform": { "type": "string", "enum": ["android", "web"], "description": "Client platform." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp." },
+        "lastActiveAt": { "type": "string", "format": "date-time", "description": "Server timestamp." }
+      },
+      "required": ["sessionId", "uid", "deviceName", "platform", "createdAt", "lastActiveAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "1-to-1 or Group conversation metadata and participant state.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Deterministic DM ID or group ID." },
+        "isGroup": { "type": "boolean", "description": "True for group chats." },
+        "memberUids": { "type": "array", "description": "List of participant UIDs." },
+        "adminUids": { "type": "array", "description": "List of group admin UIDs." },
+        "groupName": { "type": "string", "description": "Group name if isGroup is true." },
+        "groupPhotoUrl": { "type": "string", "description": "Group photo URL." },
+        "groupDescription": { "type": "string", "description": "Group description." },
+        "participantDetails": { "type": "object", "description": "Map of UID to display metadata." },
+        "lastMessageId": { "type": "string", "description": "ID of latest message." },
+        "lastMessageText": { "type": "string", "description": "Preview text of latest message." },
+        "lastMessageType": { "type": "string", "enum": ["TEXT", "IMAGE", "VIDEO", "FILE", "VOICE", "CALL", "SYSTEM"] },
+        "lastMessageSenderId": { "type": "string", "description": "UID of latest message sender." },
+        "lastMessageClientTimestamp": { "type": "integer", "description": "Epoch millis of latest message." },
+        "lastMessageAt": { "type": "string", "format": "date-time", "description": "Server timestamp." },
+        "unreadCounts": { "type": "object", "description": "Map of UID to unread message count." },
+        "typingTimestamps": { "type": "object", "description": "Map of UID to typing epoch millis." },
+        "archivedBy": { "type": "array", "description": "UIDs that archived this chat." },
+        "mutedBy": { "type": "array", "description": "UIDs that muted this chat." },
+        "chatThemes": { "type": "object", "description": "Map of UID to selected theme ID." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp." }
+      },
+      "required": ["id", "isGroup", "memberUids", "adminUids", "lastMessageText", "lastMessageType", "lastMessageClientTimestamp", "createdAt", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Individual chat message inside a conversation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Deterministic client-generated message ID." },
+        "conversationId": { "type": "string", "description": "Parent conversation ID." },
+        "senderId": { "type": "string", "description": "Sender UID." },
+        "senderName": { "type": "string", "description": "Sender display name." },
+        "memberUids": { "type": "array", "description": "Denormalized conversation member UIDs." },
+        "type": { "type": "string", "enum": ["TEXT", "IMAGE", "VIDEO", "FILE", "VOICE", "CALL", "SYSTEM"] },
+        "text": { "type": "string", "description": "Message body or caption." },
+        "mediaUrl": { "type": "string", "description": "HTTPS URL from Cloudinary or Firebase Storage." },
+        "mediaMimeType": { "type": "string", "description": "MIME type of attachment." },
+        "mediaFileName": { "type": "string", "description": "Original file name." },
+        "mediaSizeBytes": { "type": "integer", "description": "Size of attachment in bytes." },
+        "mediaDurationSec": { "type": "integer", "description": "Audio/video duration in seconds." },
+        "replyToMessageId": { "type": "string", "description": "Quoted message ID." },
+        "replyToSenderName": { "type": "string", "description": "Quoted sender name." },
+        "replyToText": { "type": "string", "description": "Quoted message text preview." },
+        "status": { "type": "string", "enum": ["SENT", "DELIVERED", "READ"] },
+        "deliveredTo": { "type": "array", "description": "UIDs that received the message." },
+        "readBy": { "type": "array", "description": "UIDs that read the message." },
+        "deletedFor": { "type": "array", "description": "UIDs that deleted this message for themselves." },
+        "deletedForEveryone": { "type": "boolean", "description": "True if sender deleted message for everyone." },
+        "clientTimestamp": { "type": "integer", "description": "Client send epoch milliseconds." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp." }
+      },
+      "required": ["id", "conversationId", "senderId", "senderName", "memberUids", "type", "text", "status", "deliveredTo", "readBy", "deletedFor", "deletedForEveryone", "clientTimestamp", "createdAt"]
+    },
+    "CallSession": {
+      "title": "CallSession",
+      "description": "WebRTC audio/video call signaling session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique call ID." },
+        "conversationId": { "type": "string", "description": "Associated conversation ID." },
+        "callerId": { "type": "string", "description": "Caller UID." },
+        "callerName": { "type": "string", "description": "Caller display name." },
+        "callerPhoto": { "type": "string", "description": "Caller avatar URL." },
+        "receiverId": { "type": "string", "description": "Receiver UID." },
+        "receiverName": { "type": "string", "description": "Receiver display name." },
+        "receiverPhoto": { "type": "string", "description": "Receiver avatar URL." },
+        "participantUids": { "type": "array", "description": "Two-element list [callerId, receiverId]." },
+        "callType": { "type": "string", "enum": ["AUDIO", "VIDEO"] },
+        "status": { "type": "string", "enum": ["RINGING", "ACCEPTED", "CONNECTED", "REJECTED", "CANCELLED", "BUSY", "MISSED", "ENDED", "FAILED"] },
+        "offer": { "type": "object", "description": "WebRTC SDP offer map {type, sdp}." },
+        "answer": { "type": "object", "description": "WebRTC SDP answer map {type, sdp}." },
+        "callerMuted": { "type": "boolean" },
+        "receiverMuted": { "type": "boolean" },
+        "callerCameraEnabled": { "type": "boolean" },
+        "receiverCameraEnabled": { "type": "boolean" },
+        "connectedAtMillis": { "type": "integer" },
+        "endedAtMillis": { "type": "integer" },
+        "durationSec": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "conversationId", "callerId", "callerName", "receiverId", "receiverName", "participantUids", "callType", "status", "callerMuted", "receiverMuted", "callerCameraEnabled", "receiverCameraEnabled", "createdAt", "updatedAt"]
+    },
+    "IceCandidate": {
+      "title": "IceCandidate",
+      "description": "WebRTC ICE candidate signaling document.",
+      "type": "object",
+      "properties": {
+        "candidate": { "type": "string", "description": "ICE candidate SDP string." },
+        "sdpMid": { "type": "string", "description": "SDP media stream identification." },
+        "sdpMLineIndex": { "type": "integer", "description": "SDP media line index." },
+        "senderId": { "type": "string", "description": "UID of candidate sender." },
+        "participantUids": { "type": "array", "description": "[callerId, receiverId] for zero-lookup list rules." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["candidate", "sdpMid", "sdpMLineIndex", "senderId", "participantUids", "createdAt"]
+    },
+    "StatusPost": {
+      "title": "StatusPost",
+      "description": "24-hour disappearing status story post.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "type": { "type": "string", "enum": ["TEXT", "IMAGE", "VIDEO"] },
+        "text": { "type": "string" },
+        "backgroundColorHex": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "privacy": { "type": "string", "enum": ["ALL", "ONLY_SHARE_WITH", "EXCEPT"] },
+        "allowedUids": { "type": "array" },
+        "excludedUids": { "type": "array" },
+        "viewerUids": { "type": "array" },
+        "createdAtMillis": { "type": "integer" },
+        "expiresAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "authorName", "type", "text", "backgroundColorHex", "mediaUrl", "privacy", "allowedUids", "excludedUids", "viewerUids", "createdAtMillis", "expiresAtMillis", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public searchable user profiles."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Owner-only private contact info and FCM tokens."
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Owner-only active login sessions."
+    },
+    "/usernames/{username}": {
+      "schema": { "$ref": "#/entities/UsernameClaim" },
+      "description": "Atomic username uniqueness registry."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "1-to-1 and group conversations."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages within a conversation."
+    },
+    "/calls/{callId}": {
+      "schema": { "$ref": "#/entities/CallSession" },
+      "description": "WebRTC call signaling sessions."
+    },
+    "/calls/{callId}/callerCandidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/IceCandidate" },
+      "description": "ICE candidates emitted by caller."
+    },
+    "/calls/{callId}/receiverCandidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/IceCandidate" },
+      "description": "ICE candidates emitted by receiver."
+    },
+    "/statuses/{statusId}": {
+      "schema": { "$ref": "#/entities/StatusPost" },
+      "description": "24-hour status updates."
+    }
+  }
+}
