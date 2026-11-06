@@ -222,36 +222,97 @@ onAuthStateChanged(auth, async (fbUser) => {
 });
 
 let isSignUpMode = false;
-const tabSignInEl = document.getElementById("tabSignIn");
-const tabSignUpEl = document.getElementById("tabSignUp");
-const signUpExtraFieldsEl = document.getElementById("signUpExtraFields");
-const btnEmailLoginEl = document.getElementById("btnEmailLogin");
-const btnEmailRegisterEl = document.getElementById("btnEmailRegister");
-const btnToggleAuthModeEl = document.getElementById("btnToggleAuthMode");
 
 function setAuthMode(signUp) {
-  isSignUpMode = signUp;
+  isSignUpMode = Boolean(signUp);
+  window.__isSignUpMode = isSignUpMode;
   hideError(authError);
-  if (signUp) {
-    tabSignUpEl.className = "btn btn-primary";
-    tabSignInEl.className = "btn btn-outline";
-    signUpExtraFieldsEl.classList.remove("hidden");
-    btnEmailLoginEl.classList.add("hidden");
-    btnEmailRegisterEl.classList.remove("hidden");
-    btnToggleAuthModeEl.textContent = "Already have an account? Sign In";
+
+  const tabIn = document.getElementById("tabSignIn");
+  const tabUp = document.getElementById("tabSignUp");
+  const extraFields = document.getElementById("signUpExtraFields");
+  const btnLogin = document.getElementById("btnEmailLogin");
+  const btnRegister = document.getElementById("btnEmailRegister");
+  const toggleBtn = document.getElementById("btnToggleAuthMode");
+
+  if (isSignUpMode) {
+    if (tabUp) {
+      tabUp.classList.add("active");
+    }
+    if (tabIn) {
+      tabIn.classList.remove("active");
+    }
+    if (extraFields) {
+      extraFields.classList.remove("hidden");
+      extraFields.style.display = "block";
+    }
+    if (btnLogin) {
+      btnLogin.classList.add("hidden");
+      btnLogin.style.display = "none";
+    }
+    if (btnRegister) {
+      btnRegister.classList.remove("hidden");
+      btnRegister.style.display = "block";
+    }
+    if (toggleBtn) {
+      toggleBtn.textContent = "Already have an account? Sign In";
+    }
   } else {
-    tabSignInEl.className = "btn btn-primary";
-    tabSignUpEl.className = "btn btn-outline";
-    signUpExtraFieldsEl.classList.add("hidden");
-    btnEmailLoginEl.classList.remove("hidden");
-    btnEmailRegisterEl.classList.add("hidden");
-    btnToggleAuthModeEl.textContent = "Don't have an account? Sign Up";
+    if (tabIn) {
+      tabIn.classList.add("active");
+    }
+    if (tabUp) {
+      tabUp.classList.remove("active");
+    }
+    if (extraFields) {
+      extraFields.classList.add("hidden");
+      extraFields.style.display = "none";
+    }
+    if (btnLogin) {
+      btnLogin.classList.remove("hidden");
+      btnLogin.style.display = "block";
+    }
+    if (btnRegister) {
+      btnRegister.classList.add("hidden");
+      btnRegister.style.display = "none";
+    }
+    if (toggleBtn) {
+      toggleBtn.textContent = "Don't have an account? Sign Up";
+    }
   }
 }
 
-tabSignInEl.addEventListener("click", () => setAuthMode(false));
-tabSignUpEl.addEventListener("click", () => setAuthMode(true));
-btnToggleAuthModeEl.addEventListener("click", () => setAuthMode(!isSignUpMode));
+window.setAuthMode = setAuthMode;
+window.toggleAuthMode = () => setAuthMode(!isSignUpMode);
+
+function attachAuthToggleListeners() {
+  const tabIn = document.getElementById("tabSignIn");
+  const tabUp = document.getElementById("tabSignUp");
+  const toggleBtn = document.getElementById("btnToggleAuthMode");
+
+  if (tabIn) {
+    tabIn.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthMode(false);
+    };
+  }
+  if (tabUp) {
+    tabUp.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthMode(true);
+    };
+  }
+  if (toggleBtn) {
+    toggleBtn.onclick = (e) => {
+      if (e) e.preventDefault();
+      setAuthMode(!isSignUpMode);
+    };
+  }
+}
+attachAuthToggleListeners();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", attachAuthToggleListeners);
+}
 
 document.getElementById("authFullName").addEventListener("input", (e) => {
   const unameInput = document.getElementById("authUsername");

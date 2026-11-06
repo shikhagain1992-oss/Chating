@@ -77,3 +77,30 @@ npx serve web -l 3000
 # Or deploy to Firebase Hosting / Cloud Run / static hosting:
 firebase deploy --only hosting
 ```
+
+---
+
+## 6. GitHub Actions CI/CD & Web Deployment Guide
+
+A fully configured GitHub Actions workflow is provided at `.github/workflows/build-and-deploy.yml`.
+
+### How to Download the APK from the GitHub Actions Tab:
+1. Push your branch to GitHub (`git push origin main` or your working branch).
+2. Open your repository on GitHub and click on the **Actions** tab at the top.
+3. You will see the workflow **"NexChat Pro - Build Android APK & Deploy Web Client"** running (or completed).
+4. Click on the latest workflow run.
+5. Scroll down to the **Artifacts** section at the bottom of the Summary page.
+6. Click **NexChat-Pro-Android-APK** to download the compiled `.apk` file directly to your computer or phone!
+
+*(Note: You can also manually trigger a build at any time by going to **Actions** -> selecting **NexChat Pro - Build Android APK & Deploy Web Client** in the left sidebar -> clicking **Run workflow**).*
+
+### How to Enable Web Deployment on GitHub Pages:
+1. In your GitHub repository, click on **Settings** (top bar).
+2. In the left navigation sidebar, click on **Pages** (under the "Code and automation" section).
+3. Under **Build and deployment**:
+   - **Recommended (Automated via Actions)**: Set **Source** to **"GitHub Actions"**.
+     The workflow will automatically build and publish the website with zero configuration.
+   - **Alternative (Deploy from branch)**: Set **Source** to **"Deploy from a branch"**, select your branch (`main`), and select folder `/ (root)`.
+     The root `/index.html` file will automatically load and route to the web client.
+4. Your live website URL will be displayed at the top of the Pages settings (e.g. `https://<username>.github.io/<repository-name>/`).
+5. Visitors can use the live web app or click the **📱 Download APK** button directly on the website to download the native Android app.

@@ -1,0 +1,84 @@
+name: NexChat Pro - Build Android APK & Deploy Web Client
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK to GitHub Actions (Direct Download in Actions Tab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexChat-Pro-Android-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+  deploy-github-pages:
+    name: Deploy Web Client to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build-android-apk
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Built APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NexChat-Pro-Android-APK
+          path: app-artifact/
+        continue-on-error: true
+
+      - name: Copy Built APK into Web Directory
+        run: |
+          if [ -f app-artifact/app-debug.apk ]; then
+            cp app-artifact/app-debug.apk web/nexchat-pro.apk
+            echo "Copied fresh built APK to web/nexchat-pro.apk"
+          fi
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'web'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true

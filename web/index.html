@@ -5,6 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NexChat Pro — Real-Time Web & Android Messaging</title>
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Immediate, resilient UI toggle handler that executes even before modules load
+    window.__isSignUpMode = false;
+    window.setAuthMode = function(signUp) {
+      window.__isSignUpMode = Boolean(signUp);
+      const tabIn = document.getElementById("tabSignIn");
+      const tabUp = document.getElementById("tabSignUp");
+      const extraFields = document.getElementById("signUpExtraFields");
+      const btnLogin = document.getElementById("btnEmailLogin");
+      const btnRegister = document.getElementById("btnEmailRegister");
+      const toggleBtn = document.getElementById("btnToggleAuthMode");
+      const err = document.getElementById("authError");
+
+      if (err) {
+        err.textContent = "";
+        err.classList.add("hidden");
+        err.style.display = "none";
+      }
+
+      if (window.__isSignUpMode) {
+        if (tabUp) {
+          tabUp.classList.add("active");
+        }
+        if (tabIn) {
+          tabIn.classList.remove("active");
+        }
+        if (extraFields) {
+          extraFields.classList.remove("hidden");
+          extraFields.style.display = "block";
+        }
+        if (btnLogin) {
+          btnLogin.classList.add("hidden");
+          btnLogin.style.display = "none";
+        }
+        if (btnRegister) {
+          btnRegister.classList.remove("hidden");
+          btnRegister.style.display = "block";
+        }
+        if (toggleBtn) {
+          toggleBtn.textContent = "Already have an account? Sign In";
+        }
+      } else {
+        if (tabIn) {
+          tabIn.classList.add("active");
+        }
+        if (tabUp) {
+          tabUp.classList.remove("active");
+        }
+        if (extraFields) {
+          extraFields.classList.add("hidden");
+          extraFields.style.display = "none";
+        }
+        if (btnLogin) {
+          btnLogin.classList.remove("hidden");
+          btnLogin.style.display = "block";
+        }
+        if (btnRegister) {
+          btnRegister.classList.add("hidden");
+          btnRegister.style.display = "none";
+        }
+        if (toggleBtn) {
+          toggleBtn.textContent = "Don't have an account? Sign Up";
+        }
+      }
+    };
+    window.toggleAuthMode = function() {
+      window.setAuthMode(!window.__isSignUpMode);
+    };
+  </script>
 </head>
 <body>
   <!-- 1. AUTHENTICATION SCREEN -->
@@ -13,45 +82,54 @@
       <h1>NexChat Pro</h1>
       <p class="sub">Unified Real-Time Messaging & WebRTC Calling (Web + Android)</p>
 
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button id="tabSignIn" class="btn btn-primary" style="margin:0;flex:1;">Sign In</button>
-        <button id="tabSignUp" class="btn btn-outline" style="margin:0;flex:1;">Sign Up</button>
+      <!-- App Download Banner (Web companion to native Android APK) -->
+      <div class="app-download-banner">
+        <div>
+          <strong>📱 NexChat Pro Android APK</strong>
+          <div style="font-size:0.75rem;color:var(--text-secondary);">Direct build available for download</div>
+        </div>
+        <a href="nexchat-pro.apk" download="NexChat-Pro.apk" class="download-link">Download APK</a>
       </div>
 
-      <div id="signUpExtraFields" class="hidden">
+      <div class="auth-tabs">
+        <button type="button" id="tabSignIn" class="tab-btn active" onclick="window.setAuthMode(false)">Sign In</button>
+        <button type="button" id="tabSignUp" class="tab-btn" onclick="window.setAuthMode(true)">Sign Up</button>
+      </div>
+
+      <div id="signUpExtraFields" class="hidden" style="display:none;">
         <div class="field-group">
           <label>Full Name *</label>
-          <input type="text" id="authFullName" placeholder="Alice Vance" />
+          <input type="text" id="authFullName" placeholder="Alice Vance" autocomplete="name" />
         </div>
         <div class="field-group">
           <label>Mobile Number *</label>
-          <input type="tel" id="authMobile" placeholder="+15550192834" />
+          <input type="tel" id="authMobile" placeholder="+15550192834" autocomplete="tel" />
         </div>
         <div class="field-group">
           <label>Unique @username (3–24 chars)</label>
-          <input type="text" id="authUsername" placeholder="alice_nexchat" />
+          <input type="text" id="authUsername" placeholder="alice_nexchat" autocomplete="username" />
         </div>
       </div>
 
       <div class="field-group">
         <label>Email ID *</label>
-        <input type="email" id="authEmail" placeholder="you@example.com" />
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
       </div>
       <div class="field-group">
         <label>Password (min 6 digits/chars) *</label>
-        <input type="password" id="authPassword" placeholder="At least 6 digits or characters" />
+        <input type="password" id="authPassword" placeholder="At least 6 digits or characters" autocomplete="current-password" />
       </div>
 
-      <div id="authError" class="error-banner hidden" style="margin-bottom:10px;"></div>
+      <div id="authError" class="error-banner hidden" style="margin-bottom:10px;display:none;"></div>
 
-      <button id="btnEmailLogin" class="btn btn-primary">Sign In with Email</button>
-      <button id="btnEmailRegister" class="btn btn-primary hidden">Create Account (Sign Up)</button>
-      <button id="btnToggleAuthMode" class="btn btn-outline" style="font-weight:700;">Don't have an account? Sign Up</button>
+      <button type="button" id="btnEmailLogin" class="btn btn-primary">Sign In with Email</button>
+      <button type="button" id="btnEmailRegister" class="btn btn-primary hidden" style="display:none;">Create Account (Sign Up)</button>
+      <button type="button" id="btnToggleAuthMode" class="btn btn-outline" style="font-weight:700;" onclick="window.toggleAuthMode()">Don't have an account? Sign Up</button>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;" />
-      <button id="btnGoogleLogin" class="btn btn-outline">Continue with Google (Optional)</button>
-      <button id="btnGithubLogin" class="btn btn-outline">Continue with GitHub (Optional)</button>
-      <button id="btnResetPassword" class="btn btn-outline">Reset Password (Min 6 Digits)</button>
+      <button type="button" id="btnGoogleLogin" class="btn btn-outline">Continue with Google (Optional)</button>
+      <button type="button" id="btnGithubLogin" class="btn btn-outline">Continue with GitHub (Optional)</button>
+      <button type="button" id="btnResetPassword" class="btn btn-outline">Reset Password (Min 6 Digits)</button>
     </div>
   </div>
 
@@ -78,8 +156,8 @@
         <input type="text" id="onboardAbout" value="Hey there! I am using NexChat Pro." />
       </div>
 
-      <button id="btnSaveOnboarding" class="btn btn-primary">Claim @username & Enter NexChat</button>
-      <button id="btnOnboardLogout" class="btn btn-outline">Sign Out</button>
+      <button type="button" id="btnSaveOnboarding" class="btn btn-primary">Claim @username & Enter NexChat</button>
+      <button type="button" id="btnOnboardLogout" class="btn btn-outline">Sign Out</button>
       <div id="onboardError" class="error-banner hidden"></div>
     </div>
   </div>
@@ -93,9 +171,10 @@
           <strong>NexChat Pro</strong>
           <div id="currentUserBadge" style="font-size:0.76rem;opacity:0.85;">@user</div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button id="btnToggleTheme" class="btn btn-outline" style="width:auto;padding:4px 10px;color:#fff;border-color:rgba(255,255,255,0.4);margin:0;">Theme</button>
-          <button id="btnLogout" class="btn btn-danger" style="width:auto;padding:4px 10px;">Logout</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a href="nexchat-pro.apk" download="NexChat-Pro.apk" class="btn btn-outline" style="width:auto;padding:4px 10px;color:#fff;border-color:rgba(255,255,255,0.4);margin:0;text-decoration:none;font-size:0.8rem;" title="Download Android APK">📱 APK</a>
+          <button type="button" id="btnToggleTheme" class="btn btn-outline" style="width:auto;padding:4px 10px;color:#fff;border-color:rgba(255,255,255,0.4);margin:0;">Theme</button>
+          <button type="button" id="btnLogout" class="btn btn-danger" style="width:auto;padding:4px 10px;">Logout</button>
         </div>
       </div>
 
