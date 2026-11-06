@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/img_launcher_logo_1793941827147"
+        android:drawable="@drawable/ic_nexchat_logo_1793971042391"
         android:gravity="center" />
 </layer-list>

@@ -341,7 +341,7 @@ fun AuthScreen(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Image(
-                                painter = painterResource(id = R.drawable.img_launcher_logo_1793941827147),
+                                painter = painterResource(id = R.drawable.ic_nexchat_logo_1793971042391),
                                 contentDescription = "NexChat Pro Logo",
                                 modifier = Modifier
                                     .size(40.dp)

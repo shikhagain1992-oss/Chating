@@ -126,6 +126,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
         NexChatNotificationHelper.ensureChannels(this)
         NexChatAuthSessionManager.restoreSession(this)
 
@@ -134,6 +146,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             NexChatRootApp(initialConversationId = initialConversationId)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        NexChatNotificationHelper.stopIncomingCallRingtone(this)
     }
 }
 
@@ -249,7 +266,7 @@ private fun AuthenticatedWorkspace(
         }
     }
 
-    // Trigger system notification for incoming calls
+    // Trigger system notification and active ringtone for incoming calls
     LaunchedEffect(activeCall?.effectiveId(), activeCall?.status) {
         val call = activeCall
         if (call != null && call.receiverId == viewModel.currentUserId && call.status == "RINGING") {
@@ -259,6 +276,8 @@ private fun AuthenticatedWorkspace(
                 callerName = call.callerName,
                 callType = call.callType
             )
+        } else {
+            NexChatNotificationHelper.stopIncomingCallRingtone(context)
         }
     }
 

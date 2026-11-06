@@ -182,26 +182,34 @@ class CloudinaryMediaService(
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("file", fileName, fileBody)
 
-            val targetCloudName: String
+            val isCustomSigningEndpoint = signingEndpoint.isConfiguredSecret() &&
+                !signingEndpoint.contains("api.cloudinary.com")
 
-            if (signingEndpoint.isConfiguredSecret()) {
+            var signedParams: SignedUploadParams? = null
+            if (isCustomSigningEndpoint) {
                 val signedRes = fetchSignedUploadParams(folder = folder, resourceType = resourceType)
-                val signed = signedRes.getOrElse { err ->
-                    return@withContext Result.failure(err)
+                signedParams = signedRes.getOrNull()
+                if (signedParams == null && !uploadPreset.isConfiguredSecret()) {
+                    return@withContext Result.failure(
+                        signedRes.exceptionOrNull() ?: IllegalStateException("Signing service unavailable")
+                    )
                 }
-                targetCloudName = signed.cloudName
+            }
+
+            val targetCloudName: String
+            if (signedParams != null) {
+                targetCloudName = signedParams.cloudName
                 multipartBuilder
-                    .addFormDataPart("api_key", signed.apiKey)
-                    .addFormDataPart("timestamp", signed.timestamp.toString())
-                    .addFormDataPart("signature", signed.signature)
-                    .addFormDataPart("folder", signed.folder)
-            } else if (uploadPreset.isConfiguredSecret()) {
+                    .addFormDataPart("api_key", signedParams.apiKey)
+                    .addFormDataPart("timestamp", signedParams.timestamp.toString())
+                    .addFormDataPart("signature", signedParams.signature)
+                    .addFormDataPart("folder", signedParams.folder)
+            } else {
+                val effectivePreset = if (uploadPreset.isConfiguredSecret()) uploadPreset else "ml_default"
                 targetCloudName = cloudName
                 multipartBuilder
                     .addFormDataPart("folder", folder)
-                    .addFormDataPart("upload_preset", uploadPreset)
-            } else {
-                return@withContext Result.failure(MediaStorageNotConfiguredException())
+                    .addFormDataPart("upload_preset", effectivePreset)
             }
 
             val url = "https://api.cloudinary.com/v1_1/$targetCloudName/$resourceType/upload"

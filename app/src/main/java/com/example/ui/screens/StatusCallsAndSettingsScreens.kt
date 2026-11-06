@@ -56,6 +56,21 @@ import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Warning
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlin.math.roundToInt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,6 +88,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,7 +104,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.data.model.CallSession
 import com.example.data.model.StatusPost
@@ -754,6 +769,44 @@ fun SettingsProfileTabScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
+fun CameraXPreviewView(
+    isFrontCamera: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    AndroidView(
+        factory = { ctx ->
+            PreviewView(ctx).apply {
+                scaleType = PreviewView.ScaleType.FILL_CENTER
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            }
+        },
+        update = { previewView ->
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    val cameraSelector = if (isFrontCamera) {
+                        CameraSelector.DEFAULT_FRONT_CAMERA
+                    } else {
+                        CameraSelector.DEFAULT_BACK_CAMERA
+                    }
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                } catch (_: Exception) {
+                }
+            }, ContextCompat.getMainExecutor(context))
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
 fun WebRtcCallOverlay(
     callSession: CallSession,
     currentUid: String,
@@ -778,11 +831,33 @@ fun WebRtcCallOverlay(
     val isCamOn = if (isCaller) callSession.callerCameraEnabled else callSession.receiverCameraEnabled
     val isPeerCamOn = if (isCaller) callSession.receiverCameraEnabled else callSession.callerCameraEnabled
 
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        if (!granted) {
+            onPermissionDenied("Camera permission is required to stream video.")
+        }
+    }
+
+    LaunchedEffect(callSession.callType) {
+        if (callSession.callType == "VIDEO" && !hasCameraPermission) {
+            cameraPermLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
     val acceptCallPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val hasMic = result[Manifest.permission.RECORD_AUDIO] == true
         val hasCam = result[Manifest.permission.CAMERA] == true
+        if (hasCam) hasCameraPermission = true
         if (callSession.callType == "VIDEO" && (!hasMic || !hasCam)) {
             onPermissionDenied("Camera and Microphone permissions are required to accept a video call.")
         } else if (!hasMic) {
@@ -791,6 +866,9 @@ fun WebRtcCallOverlay(
             onAcceptCall()
         }
     }
+
+    var pipOffsetX by remember { mutableFloatStateOf(0f) }
+    var pipOffsetY by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
@@ -801,96 +879,234 @@ fun WebRtcCallOverlay(
                 )
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(24.dp)
             .testTag("webrtc_call_overlay")
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+        // 1. FULL SCREEN MAIN STAGE (Remote peer video or voice calling profile)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 110.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // Top Status Header
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (callSession.callType == "VIDEO" && isPeerCamOn && callSession.status == "CONNECTED") {
+                // Remote peer video preview simulation / stream
                 Surface(
-                    color = NexEmeraldPrimary.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(20.dp)
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color(0xFF101D24)
                 ) {
-                    Text(
-                        text = "WebRTC ${callSession.callType} • STUN • ICE: ${iceConnectionState.name}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NexEmeraldBright,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-                AvatarCircle(name = peerName, photoUrl = peerPhoto, size = 96.dp)
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = peerName,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                val statusLabel = when {
-                    callSession.status == "RINGING" && isCaller -> "Calling... (30s timeout active)"
-                    callSession.status == "RINGING" && !isCaller -> "Incoming ${callSession.callType} Call..."
-                    callSession.status == "ACCEPTED" -> "Negotiating STUN P2P ICE Candidates (${iceConnectionState.name})..."
-                    callSession.status == "CONNECTED" -> {
-                        val mins = callDurationSec / 60
-                        val secs = callDurationSec % 60
-                        String.format(Locale.US, "Connected • %02d:%02d", mins, secs)
-                    }
-                    else -> callSession.status
-                }
-                Text(
-                    text = statusLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-            }
-
-            // Video Stage (when VIDEO call)
-            if (callSession.callType == "VIDEO") {
-                Surface(
-                    color = Color(0xFF111B21),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = if (isPeerCamOn) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                imageVector = Icons.Default.Videocam,
                                 contentDescription = null,
-                                tint = NexEmeraldPrimary,
-                                modifier = Modifier.size(44.dp)
+                                tint = NexEmeraldBright,
+                                modifier = Modifier.size(72.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = if (isPeerCamOn) {
-                                    "Remote Video Stream ($peerName)"
-                                } else {
-                                    "$peerName turned camera off"
-                                },
-                                color = Color.White
+                                text = "$peerName's Live Stream",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
                             )
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Local Camera: ${if (isCamOn) (if (isFrontCamera) "Front" else "Rear") else "Off"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f)
+                                text = "Direct STUN P2P Connected",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NexEmeraldBright
                             )
                         }
                     }
                 }
+            } else {
+                // Voice Call or Remote Camera Off: Centered avatar display
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    AvatarCircle(name = peerName, photoUrl = peerPhoto, size = 118.dp)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Text(
+                        text = peerName,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (callSession.callType == "VIDEO" && !isPeerCamOn && callSession.status == "CONNECTED") {
+                        Text(
+                            text = "$peerName's camera is turned off",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
             }
+        }
 
-            // Call Control Buttons
+        // 2. TOP STATUS BAR (WebRTC STUN state & Call Timer)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                color = NexEmeraldPrimary.copy(alpha = 0.22f),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Text(
+                    text = "WebRTC ${callSession.callType} • STUN • ICE: ${iceConnectionState.name}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NexEmeraldBright,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            val statusLabel = when {
+                callSession.status == "RINGING" && isCaller -> "Calling... (30s timeout active)"
+                callSession.status == "RINGING" && !isCaller -> "Incoming ${callSession.callType} Call..."
+                callSession.status == "ACCEPTED" -> "Connecting STUN P2P (${iceConnectionState.name})..."
+                callSession.status == "CONNECTED" -> {
+                    val mins = callDurationSec / 60
+                    val secs = callDurationSec % 60
+                    String.format(Locale.US, "Connected • %02d:%02d", mins, secs)
+                }
+                else -> callSession.status
+            }
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White.copy(alpha = 0.85f),
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        // 3. WHATSAPP-STYLE DRAGGABLE PICTURE-IN-PICTURE (PiP) CAMERA WINDOW
+        if (callSession.callType == "VIDEO") {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 70.dp, end = 16.dp)
+                    .offset { IntOffset(pipOffsetX.roundToInt(), pipOffsetY.roundToInt()) }
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            pipOffsetX += dragAmount.x
+                            pipOffsetY += dragAmount.y
+                        }
+                    }
+                    .size(width = 135.dp, height = 190.dp)
+                    .shadow(16.dp, RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF1B2830))
+                    .border(
+                        width = 2.dp,
+                        color = if (hasCameraPermission && isCamOn) NexEmeraldBright else Color.White.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+            ) {
+                if (hasCameraPermission && isCamOn) {
+                    CameraXPreviewView(
+                        isFrontCamera = isFrontCamera,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    // Floating camera flip button inside PiP
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .clickable { onSwitchCameraFacing() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Cameraswitch,
+                            contentDescription = "Flip camera",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else if (!hasCameraPermission) {
+                    // Tap to grant camera permission button
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { cameraPermLauncher.launch(Manifest.permission.CAMERA) }
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VideocamOff,
+                            contentDescription = "Camera Permission Required",
+                            tint = NexDangerRed,
+                            modifier = Modifier.size(34.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Camera Blocked",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = NexEmeraldPrimary,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "Allow Camera",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    // Camera toggled off by user
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VideocamOff,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(34.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Camera is Off",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. BOTTOM CALL CONTROLS
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 24.dp, start = 16.dp, end = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
             if (callSession.status == "RINGING" && !isCaller) {
-                // Incoming Call Accept / Reject Controls
+                // Incoming Call: Big Accept / Reject Actions
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth(0.85f),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FloatingActionButton(
@@ -899,10 +1115,10 @@ fun WebRtcCallOverlay(
                         contentColor = Color.White,
                         shape = CircleShape,
                         modifier = Modifier
-                            .size(68.dp)
+                            .size(70.dp)
                             .testTag("reject_call_button")
                     ) {
-                        Icon(Icons.Default.CallEnd, contentDescription = "Reject Call")
+                        Icon(Icons.Default.CallEnd, contentDescription = "Reject Call", modifier = Modifier.size(30.dp))
                     }
 
                     FloatingActionButton(
@@ -936,87 +1152,94 @@ fun WebRtcCallOverlay(
                         contentColor = Color.White,
                         shape = CircleShape,
                         modifier = Modifier
-                            .size(68.dp)
+                            .size(70.dp)
                             .testTag("accept_call_button")
                     ) {
-                        Icon(Icons.Default.Call, contentDescription = "Accept Call")
+                        Icon(Icons.Default.Call, contentDescription = "Accept Call", modifier = Modifier.size(30.dp))
                     }
                 }
             } else {
-                // Active / Outgoing Call Controls
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                // Active or Outgoing Call Controls Bar (WhatsApp style)
+                Surface(
+                    color = Color(0xFF14222B).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(32.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                    shadowElevation = 10.dp
                 ) {
-                    IconButton(
-                        onClick = onToggleMute,
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(if (isMuted) NexDangerRed else Color.White.copy(alpha = 0.16f))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            contentDescription = "Mute/Unmute Microphone",
-                            tint = Color.White
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onToggleSpeaker,
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(if (isSpeakerOn) NexEmeraldPrimary else Color.White.copy(alpha = 0.16f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = "Toggle Speakerphone",
-                            tint = Color.White
-                        )
-                    }
-
-                    if (callSession.callType == "VIDEO") {
                         IconButton(
-                            onClick = onToggleCamera,
+                            onClick = onToggleMute,
                             modifier = Modifier
-                                .size(54.dp)
+                                .size(50.dp)
                                 .clip(CircleShape)
-                                .background(if (!isCamOn) NexDangerRed else Color.White.copy(alpha = 0.16f))
+                                .background(if (isMuted) NexDangerRed else Color.White.copy(alpha = 0.15f))
                         ) {
                             Icon(
-                                imageVector = if (isCamOn) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                                contentDescription = "Toggle Camera",
+                                imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = "Mute/Unmute Mic",
                                 tint = Color.White
                             )
                         }
 
                         IconButton(
-                            onClick = onSwitchCameraFacing,
+                            onClick = onToggleSpeaker,
                             modifier = Modifier
-                                .size(54.dp)
+                                .size(50.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.16f))
+                                .background(if (isSpeakerOn) NexEmeraldPrimary else Color.White.copy(alpha = 0.15f))
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Cameraswitch,
-                                contentDescription = "Switch Front/Rear Camera",
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = "Speakerphone",
                                 tint = Color.White
                             )
                         }
-                    }
 
-                    FloatingActionButton(
-                        onClick = onEndOrCancelCall,
-                        containerColor = NexDangerRed,
-                        contentColor = Color.White,
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .size(62.dp)
-                            .testTag("end_call_button")
-                    ) {
-                        Icon(Icons.Default.CallEnd, contentDescription = "End Call")
+                        if (callSession.callType == "VIDEO") {
+                            IconButton(
+                                onClick = onToggleCamera,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .background(if (!isCamOn) NexDangerRed else Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Icon(
+                                    imageVector = if (isCamOn) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                    contentDescription = "Toggle Camera",
+                                    tint = Color.White
+                                )
+                            }
+
+                            IconButton(
+                                onClick = onSwitchCameraFacing,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Cameraswitch,
+                                    contentDescription = "Switch Camera Front/Rear",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+
+                        FloatingActionButton(
+                            onClick = onEndOrCancelCall,
+                            containerColor = NexDangerRed,
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .size(54.dp)
+                                .testTag("end_call_button")
+                        ) {
+                            Icon(Icons.Default.CallEnd, contentDescription = "End Call", modifier = Modifier.size(26.dp))
+                        }
                     }
                 }
             }

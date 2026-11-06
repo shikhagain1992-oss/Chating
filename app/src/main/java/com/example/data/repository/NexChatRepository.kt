@@ -936,12 +936,12 @@ class NexChatRepository(private val db: FirebaseFirestore) {
             .document(conversationId)
             .collection("messages")
             .whereArrayContains("memberUids", currentUid)
+            .limit(limitCount)
             .snapshots()
             .map { snapshot ->
                 snapshot.toObjects(ChatMessage::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                     .filter { !it.deletedFor.contains(currentUid) }
                     .sortedBy { it.clientTimestamp }
-                    .takeLast(limitCount.toInt())
             }
             .catch { error ->
                 val firestoreError = generateSequence(error) { it.cause }
@@ -965,6 +965,7 @@ class NexChatRepository(private val db: FirebaseFirestore) {
                 .document(conversationId)
                 .collection("messages")
                 .whereArrayContains("memberUids", currentUid)
+                .limit(pageSize.toLong())
                 .get()
                 .await()
             val older = snap.toObjects(ChatMessage::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
