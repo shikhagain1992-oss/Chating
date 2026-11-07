@@ -58,6 +58,7 @@ class CloudinaryMediaService(
 ) {
     companion object {
         const val DEFAULT_CLOUD_NAME = "f06cifgw"
+        const val DEFAULT_UPLOAD_PRESET = "ml_default"
     }
 
     val cloudName: String
@@ -71,7 +72,14 @@ class CloudinaryMediaService(
         }
 
     val uploadPreset: String
-        get() = (uploadPresetOverride ?: BuildConfig.CLOUDINARY_UPLOAD_PRESET).trim()
+        get() {
+            val raw = (uploadPresetOverride ?: BuildConfig.CLOUDINARY_UPLOAD_PRESET).trim()
+            return if (raw.isBlank() || raw.startsWith("MY_") || raw.startsWith("YOUR_")) {
+                if (uploadPresetOverride != null) raw else DEFAULT_UPLOAD_PRESET
+            } else {
+                raw
+            }
+        }
 
     val signingEndpoint: String
         get() = (signingEndpointOverride ?: BuildConfig.CLOUDINARY_SIGNING_ENDPOINT).trim()
@@ -197,6 +205,7 @@ class CloudinaryMediaService(
             }
 
             val targetCloudName: String
+            val effectivePreset = if (uploadPreset.isConfiguredSecret()) uploadPreset else DEFAULT_UPLOAD_PRESET
             if (signedParams != null) {
                 targetCloudName = signedParams.cloudName
                 multipartBuilder
@@ -205,7 +214,6 @@ class CloudinaryMediaService(
                     .addFormDataPart("signature", signedParams.signature)
                     .addFormDataPart("folder", signedParams.folder)
             } else {
-                val effectivePreset = if (uploadPreset.isConfiguredSecret()) uploadPreset else "ml_default"
                 targetCloudName = cloudName
                 multipartBuilder
                     .addFormDataPart("folder", folder)
@@ -218,36 +226,61 @@ class CloudinaryMediaService(
                 .post(multipartBuilder.build())
                 .build()
 
+            var statusCode = 0
+            var bodyStr = ""
             httpClient.newCall(request).execute().use { response ->
-                val bodyStr = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    val errMsg = try {
-                        JSONObject(bodyStr).optJSONObject("error")?.optString("message")
-                            ?: "HTTP ${response.code}"
-                    } catch (_: Exception) {
-                        "HTTP ${response.code}"
-                    }
-                    return@withContext Result.failure(IllegalStateException("Cloudinary upload failed: $errMsg"))
-                }
-
-                val json = JSONObject(bodyStr)
-                val secureUrl = json.optString("secure_url")
-                if (secureUrl.isBlank() || !secureUrl.startsWith("https://")) {
-                    return@withContext Result.failure(IllegalStateException("Cloudinary response missing https secure_url"))
-                }
-
-                val duration = json.optDouble("duration", durationSecHint.toDouble()).toInt()
-                Result.success(
-                    UploadedMediaResult(
-                        secureUrl = secureUrl,
-                        publicId = json.optString("public_id"),
-                        format = json.optString("format"),
-                        resourceType = json.optString("resource_type", resourceType),
-                        bytes = json.optLong("bytes", bytes.size.toLong()),
-                        durationSec = duration.coerceAtLeast(durationSecHint)
-                    )
-                )
+                statusCode = response.code
+                bodyStr = response.body?.string().orEmpty()
             }
+
+            // If unsigned upload with folder or specific resource_type was rejected (e.g. voice m4a on video/upload),
+            // retry cleanly without folder override across auto/raw endpoints.
+            if (statusCode !in 200..299 && signedParams == null) {
+                val fallbackType = if (resourceType == "video") "raw" else "auto"
+                val fallbackBody = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", fileName, bytes.toRequestBody(mediaType))
+                    .addFormDataPart("upload_preset", effectivePreset)
+                    .build()
+                val fallbackReq = Request.Builder()
+                    .url("https://api.cloudinary.com/v1_1/$targetCloudName/$fallbackType/upload")
+                    .post(fallbackBody)
+                    .build()
+                httpClient.newCall(fallbackReq).execute().use { fallbackResp ->
+                    if (fallbackResp.isSuccessful) {
+                        statusCode = fallbackResp.code
+                        bodyStr = fallbackResp.body?.string().orEmpty()
+                    }
+                }
+            }
+
+            if (statusCode !in 200..299) {
+                val errMsg = try {
+                    JSONObject(bodyStr).optJSONObject("error")?.optString("message")
+                        ?: "HTTP $statusCode"
+                } catch (_: Exception) {
+                    "HTTP $statusCode"
+                }
+                return@withContext Result.failure(IllegalStateException("Cloudinary upload failed: $errMsg"))
+            }
+
+            val json = JSONObject(bodyStr)
+            val secureUrl = json.optString("secure_url")
+            if (secureUrl.isBlank() || !secureUrl.startsWith("https://")) {
+                return@withContext Result.failure(IllegalStateException("Cloudinary response missing https secure_url"))
+            }
+
+            val duration = json.optDouble("duration", durationSecHint.toDouble()).toInt()
+            Result.success(
+                UploadedMediaResult(
+                    secureUrl = secureUrl,
+                    publicId = json.optString("public_id"),
+                    format = json.optString("format"),
+                    resourceType = json.optString("resource_type", resourceType),
+                    bytes = json.optLong("bytes", bytes.size.toLong()),
+                    durationSec = duration.coerceAtLeast(durationSecHint)
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }

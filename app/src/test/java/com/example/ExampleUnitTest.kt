@@ -12,5 +12,9 @@ class ExampleUnitTest {
   @Test
   fun addition_isCorrect() {
     assertEquals(4, 2 + 2)
+    val defaultService = com.example.data.remote.CloudinaryMediaService()
+    assertTrue(defaultService.isConfigured())
+    assertEquals("f06cifgw", defaultService.cloudName)
+    assertEquals("ml_default", defaultService.uploadPreset)
   }
 }

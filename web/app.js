@@ -47,7 +47,7 @@ const FIRESTORE_DATABASE_ID =
 const RUNTIME_CONFIG = window.NEXCHAT_RUNTIME_CONFIG || {
   cloudinaryCloudName: "f06cifgw",
   cloudinarySigningEndpoint: "",
-  cloudinaryUploadPreset: ""
+  cloudinaryUploadPreset: "ml_default"
 };
 
 // Public Google STUN servers only (no TURN servers or TURN credentials)
@@ -798,7 +798,7 @@ function isConfiguredSecret(val) {
 async function uploadMediaViaCloudinary(fileOrBlob, fileName, mimeType, folder) {
   const cloudName = (RUNTIME_CONFIG.cloudinaryCloudName || "f06cifgw").trim();
   const signingEndpoint = (RUNTIME_CONFIG.cloudinarySigningEndpoint || "").trim();
-  const uploadPreset = (RUNTIME_CONFIG.cloudinaryUploadPreset || "").trim();
+  const uploadPreset = (RUNTIME_CONFIG.cloudinaryUploadPreset || "ml_default").trim();
 
   if (!isConfiguredSecret(signingEndpoint) && !isConfiguredSecret(uploadPreset)) {
     throw new Error(
@@ -814,8 +814,9 @@ async function uploadMediaViaCloudinary(fileOrBlob, fileName, mimeType, folder) 
   formData.append("file", fileOrBlob, fileName);
 
   let targetCloud = cloudName;
+  const isCustomSigning = isConfiguredSecret(signingEndpoint) && !signingEndpoint.includes("api.cloudinary.com");
 
-  if (isConfiguredSecret(signingEndpoint)) {
+  if (isCustomSigning) {
     const idToken = currentUser ? await currentUser.getIdToken() : "";
     const timestamp = Math.floor(Date.now() / 1000);
     const signResp = await fetch(signingEndpoint, {
@@ -846,13 +847,23 @@ async function uploadMediaViaCloudinary(fileOrBlob, fileName, mimeType, folder) 
     formData.append("folder", signData.folder || folder);
   } else {
     formData.append("folder", folder);
-    formData.append("upload_preset", uploadPreset);
+    formData.append("upload_preset", isConfiguredSecret(uploadPreset) ? uploadPreset : "ml_default");
   }
 
-  const uploadResp = await fetch(`https://api.cloudinary.com/v1_1/${targetCloud}/${resourceType}/upload`, {
+  let uploadResp = await fetch(`https://api.cloudinary.com/v1_1/${targetCloud}/${resourceType}/upload`, {
     method: "POST",
     body: formData
   });
+  if (!uploadResp.ok && !isCustomSigning) {
+    const fallbackType = resourceType === "video" ? "raw" : "auto";
+    const fallbackData = new FormData();
+    fallbackData.append("file", fileOrBlob, fileName);
+    fallbackData.append("upload_preset", isConfiguredSecret(uploadPreset) ? uploadPreset : "ml_default");
+    uploadResp = await fetch(`https://api.cloudinary.com/v1_1/${targetCloud}/${fallbackType}/upload`, {
+      method: "POST",
+      body: fallbackData
+    });
+  }
   if (!uploadResp.ok) {
     throw new Error(`Cloudinary upload failed with HTTP ${uploadResp.status}`);
   }

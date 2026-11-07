@@ -495,22 +495,35 @@ class NexChatViewModel(
             clientTimestamp = nowMillis
         )
 
+        pendingMediaBytesByMsgId[msgId] = bytes
         enqueueOptimisticMessage(convId, optimisticMsg)
+        performMediaUploadAndDispatch(convId, optimisticMsg, bytes)
+    }
 
+    private val pendingMediaBytesByMsgId = mutableMapOf<String, ByteArray>()
+
+    private fun performMediaUploadAndDispatch(
+        convId: String,
+        optimisticMsg: ChatMessage,
+        bytes: ByteArray
+    ) {
         viewModelScope.launch {
             _isUploadingMedia.value = true
             val uploadRes = mediaService.uploadBytes(
                 bytes = bytes,
-                fileName = fileName,
-                mimeType = mimeType,
+                fileName = optimisticMsg.mediaFileName.ifBlank { "media_${System.currentTimeMillis()}" },
+                mimeType = optimisticMsg.mediaMimeType.ifBlank { "application/octet-stream" },
                 folder = "nexchat_pro/conversations/$convId",
-                durationSecHint = durationSecHint
+                durationSecHint = optimisticMsg.mediaDurationSec
             )
             _isUploadingMedia.value = false
 
             uploadRes.fold(
                 onSuccess = { uploaded ->
+                    pendingMediaBytesByMsgId.remove(optimisticMsg.effectiveId())
                     val readyMsg = optimisticMsg.copy(
+                        status = MessageStatus.SENDING.name,
+                        localError = null,
                         mediaUrl = uploaded.secureUrl,
                         mediaSizeBytes = uploaded.bytes,
                         mediaDurationSec = uploaded.durationSec
@@ -559,8 +572,15 @@ class NexChatViewModel(
     fun retryFailedMessage(message: ChatMessage) {
         val convId = message.conversationId
         if (message.type != "TEXT" && message.mediaUrl.isBlank()) {
+            val cachedBytes = pendingMediaBytesByMsgId[message.effectiveId()]
+            if (cachedBytes != null) {
+                val retryingMedia = message.copy(status = MessageStatus.SENDING.name, localError = null)
+                updateOptimisticMessage(convId, retryingMedia)
+                performMediaUploadAndDispatch(convId, retryingMedia, cachedBytes)
+                return
+            }
             _uiBannerError.value = message.localError
-                ?: "Upload Unavailable — Storage Not Configured: Set CLOUDINARY_SIGNING_ENDPOINT for cloud f06cifgw in Secrets."
+                ?: "Media file is no longer cached in memory. Please re-attach and send."
             return
         }
         val retrying = message.copy(status = MessageStatus.SENDING.name, localError = null)
@@ -570,6 +590,7 @@ class NexChatViewModel(
 
     fun removeFailedMessage(message: ChatMessage) {
         val convId = message.conversationId
+        pendingMediaBytesByMsgId.remove(message.effectiveId())
         _pendingMessagesByConv.update { map ->
             val filtered = map[convId].orEmpty().filter { it.effectiveId() != message.effectiveId() }
             map + (convId to filtered)

@@ -27,13 +27,13 @@ jobs:
       - name: Prepare & Package Verified Android APK
         run: |
           mkdir -p app/build/outputs/apk/debug
-          if [ -s "web/nexchat-pro.apk" ]; then
-            cp web/nexchat-pro.apk app/build/outputs/apk/debug/app-debug.apk
-            echo "Packaged verified APK from web/nexchat-pro.apk"
-          elif [ -s ".build-outputs/app-debug.apk" ]; then
+          if [ -s ".build-outputs/app-debug.apk" ]; then
             cp .build-outputs/app-debug.apk app/build/outputs/apk/debug/app-debug.apk
             cp .build-outputs/app-debug.apk web/nexchat-pro.apk
             echo "Packaged verified APK from .build-outputs/app-debug.apk"
+          elif [ -s "web/nexchat-pro.apk" ]; then
+            cp web/nexchat-pro.apk app/build/outputs/apk/debug/app-debug.apk
+            echo "Packaged verified APK from web/nexchat-pro.apk"
           else
             chmod +x gradlew || true
             if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
